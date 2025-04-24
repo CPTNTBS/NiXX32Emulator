@@ -26,32 +26,59 @@ include_directories(${SDL2_INCLUDE_DIR})
 # Source files
 set(SOURCES
     src/main.cpp
-    src/core/NiXX32System.cpp
+	src/core/NiXX32System.cpp
     src/core/M68000CPU.cpp
     src/core/Z80CPU.cpp
-    src/graphics/GraphicsSystem.cpp
-    src/audio/AudioSystem.cpp
     src/core/MemoryManager.cpp
-    src/input/InputSystem.cpp
-    src/platform/SDLRenderer.cpp
+	src/graphics/GraphicsSystem.cpp
+	src/graphics/BackgroundLayer.cpp
+	src/graphics/Effects.cpp
+	src/graphics/Sprite.cpp
+	src/audio/AudioSystem.cpp
+	src/audio/PCMPlayer.cpp
+	src/audio/QSound.cpp
+	src/audio/YM2151.cpp
+	src/network/NetworkSystem.cpp
+	src/input/InputSystem.cpp
+	src/platform/SDLRenderer.cpp
     src/platform/SDLAudioOutput.cpp
-    src/core/ROMLoader.cpp
-    src/debug/Debugger.cpp
+	src/rom/ROMLoader.cpp
+	src/security/SecuritySystem.cpp
+	src/debug/CPUDebugger.cpp
+	src/debug/Debugger.cpp
+	src/debug/Logger.cpp
+	src/debug/MemoryViewer.cpp
+	src/util/Config.cpp
+	src/util/FileSystem.cpp
 )
 
 # Header files
 set(HEADERS
-    include/NiXX32System.h
-    include/M68000CPU.h
-    include/Z80CPU.h
-    include/GraphicsSystem.h
-    include/AudioSystem.h
-    include/MemoryManager.h
-    include/InputSystem.h
-    include/SDLRenderer.h
-    include/SDLAudioOutput.h
-    include/ROMLoader.h
-    include/Debugger.h
+    include/EmulatorApp.h
+	include/core/NiXX32System.h
+    include/core/M68000CPU.h
+    include/core/Z80CPU.h
+    include/core/MemoryManager.h
+	include/graphics/GraphicsSystem.h
+	include/graphics/BackgroundLayer.h
+	include/graphics/Effects.h
+	include/graphics/Sprite.h
+	include/audio/AudioSystem.h
+	include/audio/PCMPlayer.h
+	include/audio/QSound.h
+	include/audio/YM2151.h
+	include/network/NetworkSystem.h
+	include/input/InputSystem.h
+	include/platform/SDLRenderer.h
+    include/platform/SDLAudioOutput.h
+	include/rom/ROMLoader.h
+	include/security/SecuritySystem.h
+	include/debug/CPUDebugger.h
+	include/debug/Debugger.h
+	include/debug/Logger.h
+	include/debug/MemoryViewer.h
+	include/util/Config.h
+	include/util/FileSystem.h
 )
 
 # Create executable
