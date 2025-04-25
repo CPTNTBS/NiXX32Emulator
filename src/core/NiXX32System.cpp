@@ -60,6 +60,7 @@ namespace {
         static constexpr uint32_t AUDIO_BASE    = 0x002000; // Offset from IO_REGISTERS_BASE
         static constexpr uint32_t AUDIO_SIZE    = 0x000100; // 256 bytes
     };
+
 }
 
 namespace NiXX32 {
@@ -71,13 +72,20 @@ System::System(HardwareVariant variant, const std::string& configPath)
       m_debugger(nullptr)
 {
     try {
-        // Create logger first so other components can use it
+		// Create power state variables:
+		m_powerState = PowerState::FULL_POWER;
+		m_lastActivityTime = 0;
+		m_idleThresholdMs = 300000;     // 5 minutes default idle threshold
+		m_sleepThresholdMs = 1800000;   // 30 minutes default sleep threshold
+		m_powerManagementEnabled = false; // Disabled by default for original hardware
+
+		// Create logger first so other components can use it
         m_logger = std::make_unique<Logger>();
         if (!m_logger->Initialize()) {
             throw std::runtime_error("Failed to initialize logger");
         }
         m_logger->Info("System", "Initializing NiXX-32 Emulation System");
-        
+		
         // Create configuration manager
         m_config = std::make_unique<Config>(*this, *m_logger, configPath);
         
@@ -198,6 +206,9 @@ bool System::Initialize(const std::string& romPath) {
         
         // Setup memory mappings
         SetupMemoryMap();
+
+		// Setup interrupt vector table
+		SetupInterruptVectorTable();
         
         // Initialize ROM loader
         if (!m_romLoader->Initialize()) {
@@ -236,10 +247,29 @@ bool System::Initialize(const std::string& romPath) {
         if (!m_inputSystem->Initialize(m_variant)) {
             throw std::runtime_error("Failed to initialize input system");
         }
-        
+
+		// Load power management settings from config
+		if (m_config->HasOption("system.powerManagementEnabled")) {
+			m_powerManagementEnabled = m_config->GetBool("system.powerManagementEnabled");
+		}
+		
+		if (m_config->HasOption("system.idleThresholdMs")) {
+			m_idleThresholdMs = static_cast<uint64_t>(m_config->GetInt("system.idleThresholdMs"));
+		}
+		
+		if (m_config->HasOption("system.sleepThresholdMs")) {
+			m_sleepThresholdMs = static_cast<uint64_t>(m_config->GetInt("system.sleepThresholdMs"));
+		}	
+	
         // Connect the subsystems to ensure communication
         ConnectSubsystems();
-        
+
+	    // Initialize power management
+	    SetPowerState(PowerState::FULL_POWER);
+    	auto now = std::chrono::steady_clock::now();
+    	m_lastActivityTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+        	now.time_since_epoch()).count();		
+		
         // Load ROM if a path was provided
         if (!romPath.empty()) {
             // Verify ROM compatibility with hardware variant
@@ -284,9 +314,30 @@ void System::RunCycle(float deltaTime) {
     }
     
     try {
-        // Calculate CPU cycles based on elapsed time and clock speeds
-        uint32_t mainCpuCycles = static_cast<uint32_t>(m_mainCPU->GetClockSpeed() * 1000 * deltaTime);
-        uint32_t audioCpuCycles = static_cast<uint32_t>(m_audioCPU->GetClockSpeed() * 1000 * deltaTime);
+
+		// Update power management state
+		UpdatePowerState(deltaTime);
+		
+		// Scale deltaTime based on power state if needed
+		float adjustedDeltaTime = deltaTime;
+		if (m_powerState == PowerState::SLEEP) {
+			// In sleep mode, we can actually reduce update frequency
+			// to save host CPU resources too (not just emulated hardware)
+			static float sleepAccumulator = 0.0f;
+			sleepAccumulator += deltaTime;
+			
+			// Only process updates at 1/10th the normal rate in sleep mode
+			if (sleepAccumulator < 0.1f) {
+				return; // Skip this update cycle
+			}
+			
+			adjustedDeltaTime = sleepAccumulator;
+			sleepAccumulator = 0.0f;
+		}
+
+		// Calculate CPU cycles based on elapsed time and clock speeds
+        uint32_t mainCpuCycles = static_cast<uint32_t>(m_mainCPU->GetClockSpeed() * 1000 * adjustedDeltaTime);
+        uint32_t audioCpuCycles = static_cast<uint32_t>(m_audioCPU->GetClockSpeed() * 1000 * adjustedDeltaTime);
         
         // Allow debugger to control execution if attached
         if (m_debugger) {
@@ -307,14 +358,17 @@ void System::RunCycle(float deltaTime) {
         int executedAudioCycles = m_audioCPU->Execute(adjustedAudioCycles);
         
         // Update subsystems - they need to know the actual time elapsed
-        // which might be different from deltaTime if CPU execution was slower than expected
-        float actualDeltaTime = deltaTime * (static_cast<float>(executedMainCycles) / mainCpuCycles);
+        // which might be different from adjustedDeltaTime if CPU execution was slower than expected
+        float actualDeltaTime = adjustedDeltaTime * (static_cast<float>(executedMainCycles) / mainCpuCycles);
         
         // Update subsystems with the calculated actual time
         m_graphicsSystem->Update(actualDeltaTime);
         m_audioSystem->Update(actualDeltaTime);
         m_inputSystem->Update(actualDeltaTime);
-    }
+
+
+
+	}
     catch (const std::exception& e) {
         m_logger->Error("System", std::string("Error during cycle execution: ") + e.what());
         // Consider pausing the system on error
@@ -473,6 +527,11 @@ void System::ConfigureForVariant() {
         m_config->SetInt("audio.sampleRate", 11025);        // 11.025 kHz
         m_config->SetInt("audio.fmChannels", 8);            // 8 FM channels
         m_config->SetInt("audio.pcmChannels", 8);           // 8 PCM channels
+
+		// Original hardware did not have sophisticated power management
+        m_powerManagementEnabled = false;
+        m_idleThresholdMs = 600000;     // 10 minutes (if enabled)
+        m_sleepThresholdMs = 1800000;   // 30 minutes (if enabled)		
     } else {
         // Set up for enhanced hardware (1992)
         m_config->SetInt("system.mainCpuSpeed", 20);        // 20 MHz
@@ -486,7 +545,16 @@ void System::ConfigureForVariant() {
         m_config->SetInt("audio.sampleRate", 22050);        // 22.05 kHz
         m_config->SetInt("audio.fmChannels", 12);           // 12 FM channels
         m_config->SetInt("audio.pcmChannels", 16);          // 16 PCM channels
+
+        // Enhanced hardware has better power management
+        m_powerManagementEnabled = true;
+        m_idleThresholdMs = 300000;     // 5 minutes
+        m_sleepThresholdMs = 900000;    // 15 minutes
     }
+
+    m_config->SetBool("system.powerManagementEnabled", m_powerManagementEnabled);
+    m_config->SetInt("system.idleThresholdMs", static_cast<int>(m_idleThresholdMs));
+    m_config->SetInt("system.sleepThresholdMs", static_cast<int>(m_sleepThresholdMs));	
 }
 
 void System::ConnectSubsystems() {
@@ -777,5 +845,373 @@ void System::SetupMemoryMap() {
 		   throw; // Re-throw to be caught by Initialize()
 	   }
    }
+
+void System::SetupInterruptVectorTable() {
+	m_logger->Info("System", "Setting up 68000 interrupt vector table");
+
+	try {
+		// Get ROM region to place vector table at the beginning (address 0)
+		MemoryRegion* romRegion = m_memoryManager->GetRegionByName("ROM");
+		if (!romRegion) {
+			throw std::runtime_error("ROM region not found");
+		}
+
+		// Define vector table addresses
+		const uint32_t vectorTableSize = 0x100;  // 256 bytes (64 vectors, 4 bytes each)
+		std::vector<uint32_t> vectorTable(vectorTableSize / 4, 0);
+
+		// Initial SSP (Supervisor Stack Pointer) - typically points to top of RAM
+		uint32_t mainRamSize = (m_variant == HardwareVariant::NIXX32_ORIGINAL) ? 
+							0x100000 : 0x200000;  // 1MB or 2MB
+		uint32_t mainRamBase = (m_variant == HardwareVariant::NIXX32_ORIGINAL) ? 
+							0x200000 : 0x400000;
+		vectorTable[0] = mainRamBase + mainRamSize - 4;  // Top of RAM - 4 bytes
+
+		// Initial PC (Program Counter) - typically points to start of code
+		vectorTable[1] = 0x000100;  // Start of ROM code after vector table
+
+		// Exception vectors
+		vectorTable[2] = 0x000200;  // Bus Error
+		vectorTable[3] = 0x000210;  // Address Error
+		vectorTable[4] = 0x000220;  // Illegal Instruction
+		vectorTable[5] = 0x000230;  // Division by Zero
+		vectorTable[6] = 0x000240;  // CHK Instruction
+		vectorTable[7] = 0x000250;  // TRAPV Instruction
+		vectorTable[8] = 0x000260;  // Privilege Violation
+		vectorTable[9] = 0x000270;  // Trace
+		vectorTable[10] = 0x000280; // Line 1010 Emulator
+		vectorTable[11] = 0x000290; // Line 1111 Emulator
+			
+		// Reserved vectors (12-23)
+		for (int i = 12; i <= 23; i++) {
+			vectorTable[i] = 0x0002A0 + ((i - 12) * 0x10); // Align to 16-byte boundaries
+		}
+			
+		// Spurious Interrupt
+		vectorTable[24] = 0x0003A0;
+			
+		// Level 1-7 Autovector Interrupts
+		for (int i = 25; i <= 31; i++) {
+			vectorTable[i] = 0x0003B0 + ((i - 25) * 0x10); // Align to 16-byte boundaries
+		}
+			
+		// TRAP Instruction Vectors (32-47)
+		for (int i = 32; i <= 47; i++) {
+			vectorTable[i] = 0x000410 + ((i - 32) * 0x10);
+		}
+			
+		// FPU and MMU vectors (if applicable) (48-63)
+		for (int i = 48; i <= 63; i++) {
+			vectorTable[i] = 0x000510 + ((i - 48) * 0x10);
+		}
+			
+		// User Interrupt Vectors - these are typically set up by the game ROM
+		// but we provide default handlers
+		for (int i = 64; i < vectorTableSize / 4; i++) {
+			vectorTable[i] = 0x000610 + ((i - 64) * 0x10);
+		}
+			
+		// Set up specific interrupt handlers for the NiXX-32 system
+			
+		// VBLANK interrupt - used for timing (vector 28, IRQ level 4)
+		vectorTable[28] = 0x000068;  // Standard location for VBLANK handler
+		
+		// Coin/Service interrupt (vector 27, IRQ level 3)
+		vectorTable[27] = 0x000300;
+		
+		// Control inputs interrupt (vector 26, IRQ level 2)
+		vectorTable[26] = 0x000310;
+		
+		// Audio communication interrupt (vector 29, IRQ level 5)
+		vectorTable[29] = 0x000320;
+		
+		// Timer interrupt (vector 30, IRQ level 6)
+		vectorTable[30] = 0x000330;
+		
+		// NMI/System reset (vector 31, IRQ level 7)
+		vectorTable[31] = 0x000340;
+		
+		// Write vector table to ROM memory region
+		for (size_t i = 0; i < vectorTable.size(); i++) {
+			// Convert to big-endian (68000 is big-endian)
+			uint32_t bigEndianValue = 
+				((vectorTable[i] & 0xFF) << 24) |
+				((vectorTable[i] & 0xFF00) << 8) |
+				((vectorTable[i] & 0xFF0000) >> 8) |
+				((vectorTable[i] & 0xFF000000) >> 24);
+				
+			uint32_t addr = i * 4;
+			romRegion->data[addr] = (bigEndianValue >> 24) & 0xFF;
+			romRegion->data[addr+1] = (bigEndianValue >> 16) & 0xFF;
+			romRegion->data[addr+2] = (bigEndianValue >> 8) & 0xFF;
+			romRegion->data[addr+3] = bigEndianValue & 0xFF;
+		}
+			
+		// Install default exception handlers
+		InstallDefaultExceptionHandlers();
+			
+		m_logger->Info("System", "Interrupt vector table setup complete");
+	}
+	catch (const std::exception& e) {
+		m_logger->Error("System", std::string("Interrupt vector table setup failed: ") + e.what());
+		throw; // Re-throw to be caught by Initialize()
+	}
+}
+
+void System::InstallDefaultExceptionHandlers() {
+	// Create simple handlers for each exception
+	// These handlers will log the exception and reset if necessary
+		
+	// Get ROM region to place handler code
+	MemoryRegion* romRegion = m_memoryManager->GetRegionByName("ROM");
+	if (!romRegion) {
+		throw std::runtime_error("ROM region not found");
+	}
+		
+	// Simple RTE (Return from Exception) instruction - 0x4E73
+	const uint16_t RTE_INSTRUCTION = 0x4E73;
+		
+	// Define handler addresses (must match the vector table)
+	struct HandlerInfo {
+		uint32_t address;
+		const char* name;
+		bool shouldReset;
+	};
+		
+	HandlerInfo handlers[] = {
+		{ 0x000200, "Bus Error", true },
+		{ 0x000210, "Address Error", true },
+		{ 0x000220, "Illegal Instruction", true },
+		{ 0x000230, "Division by Zero", false },
+		{ 0x000240, "CHK Instruction", false },
+		{ 0x000250, "TRAPV Instruction", false },
+		{ 0x000260, "Privilege Violation", true },
+		{ 0x000270, "Trace", false },
+		{ 0x000280, "Line 1010 Emulator", true },
+		{ 0x000290, "Line 1111 Emulator", true },
+		{ 0x0003A0, "Spurious Interrupt", false },
+		{ 0x0003B0, "Level 1 Interrupt", false },
+		{ 0x0003C0, "Level 2 Interrupt", false },
+		{ 0x0003D0, "Level 3 Interrupt", false },
+		// 0x000068 is VBLANK - handled separately
+		{ 0x0003F0, "Level 5 Interrupt", false },
+		{ 0x000400, "Level 6 Interrupt", false },
+		{ 0x000410, "Level 7 Interrupt", true }
+	};
+		
+	// Install each handler
+	for (const auto& handler : handlers) {
+		// Register a CPU hook for this address
+		m_mainCPU->RegisterHook(handler.address, [this, handler]() {
+			// Log the exception
+			m_logger->Warning("CPU", std::string("Exception occurred: ") + handler.name);
+			
+			// Reset system if this is a critical exception
+			if (handler.shouldReset) {
+				m_logger->Error("CPU", std::string("Critical exception, resetting system: ") + handler.name);
+				this->Reset();
+			}
+		});
+			
+		// Write RTE instruction to the handler address
+		// if not VBLANK (which has a custom handler)
+		if (handler.address != 0x000068) {
+			uint32_t addr = handler.address - 0x000000; // Convert to ROM-relative address
+			romRegion->data[addr] = (RTE_INSTRUCTION >> 8) & 0xFF;
+			romRegion->data[addr+1] = RTE_INSTRUCTION & 0xFF;
+		}
+	}
+		
+	// Special case for VBLANK
+	// The hook is installed in ConnectSubsystems()
+}
+
+void System::UpdatePowerState(float deltaTime) {
+    if (!m_powerManagementEnabled) {
+        return;
+    }
+
+    // Get current time
+    auto now = std::chrono::steady_clock::now();
+    auto currentTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()).count();
+
+    // Check for activity (e.g., input events)
+    bool hasActivity = false;
+    if (m_inputSystem && m_inputSystem->GetActiveChannelCount() > 0) {
+        hasActivity = true;
+    }
+
+    // Update last activity time if there's activity
+    if (hasActivity) {
+        m_lastActivityTime = currentTimeMs;
+        
+        // Wake up if we were in a low power state
+        if (m_powerState != PowerState::FULL_POWER) {
+            SetPowerState(PowerState::FULL_POWER);
+        }
+    }
+    
+    // Calculate idle time
+    uint64_t idleTimeMs = currentTimeMs - m_lastActivityTime;
+    
+    // Transition to appropriate power state based on idle time
+    if (m_powerState == PowerState::FULL_POWER && idleTimeMs > m_idleThresholdMs) {
+        SetPowerState(PowerState::IDLE);
+    } else if (m_powerState == PowerState::IDLE && idleTimeMs > m_sleepThresholdMs) {
+        SetPowerState(PowerState::SLEEP);
+    }
+}
+
+void System::SetPowerState(PowerState newState) {
+    if (m_powerState == newState) {
+        return;
+    }
+    
+    m_logger->Info("System", "Changing power state from " + 
+                   PowerStateToString(m_powerState) + " to " + 
+                   PowerStateToString(newState));
+    
+    m_powerState = newState;
+    
+    // Apply power state to subsystems
+    switch (m_powerState) {
+        case PowerState::FULL_POWER:
+            // Restore all components to full operation
+            SetCPUPowerState(1.0f);
+            SetGraphicsPowerState(1.0f);
+            SetAudioPowerState(1.0f);
+            break;
+            
+        case PowerState::IDLE:
+            // Reduce some component speeds
+            SetCPUPowerState(0.5f);    // Run CPUs at half speed
+            SetGraphicsPowerState(0.8f); // Slightly reduce graphics processing
+            SetAudioPowerState(1.0f);  // Keep audio at full quality
+            break;
+            
+        case PowerState::LOW_POWER:
+            // Significantly reduce most components
+            SetCPUPowerState(0.25f);   // Run CPUs at quarter speed
+            SetGraphicsPowerState(0.5f); // Halve graphics processing
+            SetAudioPowerState(0.5f);  // Reduce audio quality
+            break;
+            
+        case PowerState::SLEEP:
+            // Minimum power needed to detect wake events
+            SetCPUPowerState(0.1f);    // Minimal CPU for wake detection
+            SetGraphicsPowerState(0.0f); // Turn off graphics processing
+            SetAudioPowerState(0.0f);  // Mute audio
+            break;
+    }
+}
+
+std::string System::PowerStateToString(PowerState state) {
+    switch (state) {
+        case PowerState::FULL_POWER: return "FULL_POWER";
+        case PowerState::IDLE: return "IDLE";
+        case PowerState::LOW_POWER: return "LOW_POWER";
+        case PowerState::SLEEP: return "SLEEP";
+        default: return "UNKNOWN";
+    }
+}
+
+void System::SetCPUPowerState(float powerFactor) {
+    // Apply power scaling to CPU speeds
+    if (m_mainCPU) {
+        // Scale clock speed by the power factor
+        uint32_t normalClockSpeed = (m_variant == HardwareVariant::NIXX32_ORIGINAL) ? 
+                                    16000000 : 20000000;
+        uint32_t adjustedClockSpeed = static_cast<uint32_t>(normalClockSpeed * powerFactor);
+        m_mainCPU->SetClockSpeed(adjustedClockSpeed);
+    }
+    
+    if (m_audioCPU) {
+        // Scale audio CPU clock similarly
+        uint32_t normalClockSpeed = (m_variant == HardwareVariant::NIXX32_ORIGINAL) ? 
+                                    8000000 : 10000000;
+        uint32_t adjustedClockSpeed = static_cast<uint32_t>(normalClockSpeed * powerFactor);
+        m_audioCPU->SetClockSpeed(adjustedClockSpeed);
+    }
+}
+
+void System::SetGraphicsPowerState(float powerFactor) {
+    // Apply power management to graphics system
+    if (m_graphicsSystem) {
+        if (powerFactor <= 0.0f) {
+            // Turn off display (blank screen) but keep minimal state
+            m_graphicsSystem->SetDisplayEnabled(false);
+        } else {
+            // Adjust refresh rate or rendering quality based on power factor
+            m_graphicsSystem->SetDisplayEnabled(true);
+            m_graphicsSystem->SetPowerSavingMode(powerFactor < 0.9f);
+            
+            // Could also adjust sprite limit, effect quality, etc.
+            if (powerFactor < 0.5f) {
+                m_graphicsSystem->SetQualityReduction(true);
+            } else {
+                m_graphicsSystem->SetQualityReduction(false);
+            }
+        }
+    }
+}
+
+void System::SetAudioPowerState(float powerFactor) {
+    // Apply power management to audio system
+    if (m_audioSystem) {
+        if (powerFactor <= 0.0f) {
+            // Mute audio completely
+            m_audioSystem->SetMasterVolume(0);
+            m_audioSystem->SetPaused(true);
+        } else {
+            // Adjust audio quality based on power factor
+            m_audioSystem->SetPaused(false);
+            
+            // Could reduce sample rate or disable certain effects
+            if (powerFactor < 0.7f) {
+                m_audioSystem->SetQualityReduction(true);
+                m_audioSystem->SetMasterVolume(static_cast<uint8_t>(192 * powerFactor)); // Scale volume
+            } else {
+                m_audioSystem->SetQualityReduction(false);
+                m_audioSystem->SetMasterVolume(192); // Full volume (192 of 255)
+            }
+        }
+    }
+}
+
+void System::EnablePowerManagement(bool enable) {
+    m_powerManagementEnabled = enable;
+    m_logger->Info("System", std::string("Power management ") + 
+                   (enable ? "enabled" : "disabled"));
+    
+    // Reset to full power when changing the setting
+    if (enable) {
+        // Initialize power management
+        auto now = std::chrono::steady_clock::now();
+        m_lastActivityTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()).count();
+    }
+    SetPowerState(PowerState::FULL_POWER);
+}
+
+bool System::IsPowerManagementEnabled() const {
+    return m_powerManagementEnabled;
+}
+
+PowerState System::GetPowerState() const {
+    return m_powerState;
+}
+
+void System::SetIdleThreshold(uint64_t milliseconds) {
+    m_idleThresholdMs = milliseconds;
+    m_logger->Info("System", "Idle threshold set to " + 
+                   std::to_string(milliseconds) + " ms");
+}
+
+void System::SetSleepThreshold(uint64_t milliseconds) {
+    m_sleepThresholdMs = milliseconds;
+    m_logger->Info("System", "Sleep threshold set to " + 
+                   std::to_string(milliseconds) + " ms");
+}
 
 } // namespace NiXX32

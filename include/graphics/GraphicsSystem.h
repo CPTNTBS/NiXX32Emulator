@@ -223,7 +223,12 @@
 	  * @return Pointer to internal frame buffer
 	  */
 	 uint32_t* GetFrameBuffer();
- 
+
+	 //Power Management Methods (TODO: Document)
+	 void SetDisplayEnabled(bool enabled);
+	 void SetPowerSavingMode(bool enabled);
+	 void SetQualityReduction(bool enabled);	 
+
  private:
 	 // Reference to parent system
 	 System& m_system;
