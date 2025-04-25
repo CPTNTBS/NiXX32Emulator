@@ -269,7 +269,12 @@
 	  * @return Clock speed in MHz
 	  */
 	 uint32_t GetClockSpeed() const;
-	 
+
+	 /**
+	  * Set the CPU clock speed
+	  */
+	 void SetClockSpeed(uint32_t clockSpeed);
+
 	 /**
 	  * Disassemble the instruction at the given address
 	  * @param address Memory address
