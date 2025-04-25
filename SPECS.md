@@ -1,6 +1,6 @@
 ## Specs
 
-| **Arcade Board**         | **[[NiXX-32]]**                                                            | **[[NiXX-32\|NiXX-32+]]**                                                  |
+| **Arcade Board**         | **NiXX-32**                                                            | **NiXX-32+**                                                  |
 | ------------------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | **Main CPU**             | Motorola 68000 @ 16 MHz                                                    | Motorola 68000 @ 20 MHz                                                    |
 | **Co-Processor**         | Zilog Z80 @ 8 MHz (sound processing)                                       | Zilog Z80 @ 10 MHz (sound processing)                                      |
