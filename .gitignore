@@ -152,3 +152,4 @@ extern/SDL2-2.30.11/lib/x86/SDL2.lib
 extern/SDL2-2.30.11/lib/x86/SDL2.pdb
 extern/SDL2-2.30.11/lib/x86/SDL2main.lib
 extern/SDL2-2.30.11/lib/x86/SDL2test.lib
+.vscode/c_cpp_properties.json
