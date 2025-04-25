@@ -380,6 +380,9 @@
 	  * @param cpu Pointer to Z80 CPU
 	  */
 	 void SetAudioCPU(Z80CPU* cpu);
+
+	 //Power Management Methods (TODO: Document)
+	 void SetQualityReduction(bool enabled);	 
  
  private:
 	 // Reference to parent system

@@ -392,7 +392,10 @@
 	  * @return Number of players
 	  */
 	 uint8_t GetPlayerCount() const;
- 
+
+	 // Power management Method (TODO: Document)
+	 uint8_t GetActiveChannelCount() const;	 
+
  private:
 	 // Reference to parent system
 	 System& m_system;
