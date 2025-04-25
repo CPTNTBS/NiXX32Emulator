@@ -191,7 +191,21 @@
 	  * Disable VRAM write callback
 	  */
 	 void DisableVRAMWriteCallback();
+
+	 /**
+	  * Handle video register write
+	  * @param address Register address
+	  * @param value Value to write
+	  */
+	 void HandleRegisterWrite(uint32_t address, uint16_t value);
 	 
+	 /**
+	  * Read from video register
+	  * @param address Register address
+	  * @return Register value
+	  */
+	 uint16_t HandleRegisterRead(uint32_t address);
+
 	 /**
 	  * Convert screen coordinates to layer coordinates
 	  * @param screenX X coordinate in screen space
@@ -312,19 +326,6 @@
 	  */
 	 uint8_t* GetVRAMPointer(uint32_t baseAddress, uint32_t size);
 	 
-	 /**
-	  * Handle video register write
-	  * @param address Register address
-	  * @param value Value to write
-	  */
-	 void HandleRegisterWrite(uint32_t address, uint16_t value);
-	 
-	 /**
-	  * Read from video register
-	  * @param address Register address
-	  * @return Register value
-	  */
-	 uint16_t HandleRegisterRead(uint32_t address);
  };
  
  } // namespace NiXX32

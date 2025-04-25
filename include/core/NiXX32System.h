@@ -55,6 +55,11 @@
 	 ~System();
 	 
 	 /**
+	  * Helper method for destructor, ensures proper cleanup order to avoid dependency issues
+	  */
+	 void System::Cleanup();
+
+	 /**
 	  * Initialize the emulation system
 	  * @param romPath Path to the game ROM
 	  * @return True if initialization was successful

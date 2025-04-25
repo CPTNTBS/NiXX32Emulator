@@ -119,8 +119,6 @@ System::~System() {
 }
 
 void System::Cleanup() {
-    // Ensure proper cleanup order to avoid dependency issues
-    
     // First detach debugger
     if (m_debugger) {
         m_logger->Info("System", "Detaching debugger");
@@ -458,7 +456,7 @@ Logger& System::GetLogger() {
 }
 
 void System::ConfigureForVariant() {
-    m_logger->Info("System", "Configuring system for variant: " + 
+    m_logger->Info("System", std::string("Configuring system for variant: ") + 
                    (m_variant == HardwareVariant::NIXX32_ORIGINAL ? "Original" : "Plus"));
     
     // Load variant-specific configuration values
