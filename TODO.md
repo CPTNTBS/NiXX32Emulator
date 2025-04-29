@@ -28,7 +28,7 @@
 | Network | NetworkSystem | NO | NO | NO |
 | Security | SecuritySystem | NO | NO | NO |
 ## Detailed RoadMap
-### NiXX32System
+### NiXX32System - WORKING
 #### Implementation Summary
 Most of the primary features are implemented, some additional features like power state management and interrupt handler also implemented. Most other features for NiXX32System implementation can be added later, so will merge for now. Features likely to be implemented next include:
 - DMA Support: Many arcade systems of that era had DMA (Direct Memory Access) capabilities for faster data transfers, which isn't explicitly implemented.
@@ -140,3 +140,83 @@ Most of the primary features are implemented, some additional features like powe
 	- ~~Implement final error reporting mechanisms~~
 	- Add performance profiling support
 	- Implement benchmarking tools for accuracy testing
+
+### MemoryManager - IN PROGRESS
+#### Recorded Progress
+1. Core Architecture
+	- ~~Basic class structure and initialization~~	
+	- ~~Constructor/Destructor~~
+	- ~~Hardware variant detection~~
+	- ~~Memory region management system~~
+	- ~~Error logging and reporting~~
+	- ~~Thread safety mechanisms~~
+	- ~~Self-test and validation routines~~
+	- ~~Memory refresh handling (for DRAM)~~
+2. Memory Map Configuration
+	- ~~Original NiXX-32 (1989) memory layout~~
+	- ~~Enhanced NiXX-32+ (1992) memory layout~~
+	- Dynamic region reconfiguration
+	- Memory mirroring support
+	- Memory banking support
+	- Address decoding simulation (for accurate timing)
+3. Memory Access Implementation
+	- ~~8-bit read/write operations~~
+	- ~~16-bit read/write operations~~
+	- ~~32-bit read/write operations~~
+	- ~~Unaligned access detection~~
+	- ~~Big-endian format handling~~
+	- Proper CPU exception triggering for illegal access
+	- Cache simulation
+	- Access timing and latency emulation
+	- Bus arbitration (for multi-processor access)
+	- Bus error simulation
+	- Wait states for different memory regions
+4. Memory Regions and I/O
+	- ~~Region definition and validation~~
+	- ~~Memory access permissions enforcement~~
+	- ~~Region lookup by address and name~~
+	- ~~Memory-mapped I/O support via custom handlers~~
+	- DMA (Direct Memory Access) support
+	- Hardware interrupt triggering from memory access
+	- Memory-mapped peripheral emulation interfaces
+	- Memory controller registers emulation
+	- VRAM/GRAM specific access patterns
+5. ROM Management
+	- ~~ROM loading functionality~~
+	- ROM signature validation
+	- ROM patching support
+	- Support for multiple ROM banks
+	- Anti-piracy/security chip emulation
+	- Boot sequence ROM handling
+6. Debugging and Development Features
+	- ~~Direct memory pointer access for efficient operations~~
+	- Memory breakpoint support
+	- Memory watch support
+	- Memory state saving/restoration (for save states)
+	- Memory visualization and hex dump utilities
+	- Memory initialization patterns
+	- Memory corruption detection
+	- Cheat system integration
+7. Advanced Features
+	- Power state management (standby, power down)
+	- Memory protection/security features
+	- Endianness conversion utilities
+	- Performance optimization for frequent region access
+	- Memory snapshot and comparison tools
+	- Battery-backed memory handling (for game saves)
+	- Custom memory controller emulation
+	- Hardware-specific memory timing
+8. Integration
+	- ~~System class integration~~
+	- ~~Logger integration~~
+	- CPU exception integration
+	- Debugger integration
+	- System state serialization (save/load)
+	- Synchronization with audio/video subsystems
+	- Real-time memory mapping visualization
+9. Arcade-Specific Features
+	- Memory-mapped input handling
+	- Memory-mapped coin/credit system
+	- Operator settings in NVRAM
+	- High score table persistence
+	- Game-specific memory hacks/patches
