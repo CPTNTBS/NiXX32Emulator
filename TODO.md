@@ -155,10 +155,10 @@ Most of the primary features are implemented, some additional features like powe
 2. Memory Map Configuration
 	- ~~Original NiXX-32 (1989) memory layout~~
 	- ~~Enhanced NiXX-32+ (1992) memory layout~~
-	- Dynamic region reconfiguration
-	- Memory mirroring support
-	- Memory banking support
-	- Address decoding simulation (for accurate timing)
+	- ~~Dynamic region reconfiguration~~
+	- ~~Memory mirroring support~~
+	- ~~Memory banking support~~
+	- ~~Address decoding simulation (for accurate timing)~~
 3. Memory Access Implementation
 	- ~~8-bit read/write operations~~
 	- ~~16-bit read/write operations~~
